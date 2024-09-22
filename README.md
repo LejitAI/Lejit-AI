@@ -1,1 +1,1 @@
-# Lejit.ai-Web-UI
+# Lejit-AI
