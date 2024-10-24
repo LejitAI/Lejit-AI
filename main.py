@@ -19,6 +19,8 @@ def init_session_state():
         st.session_state["show_file_uploader"] = True
     if "document_type" not in st.session_state:
         st.session_state["document_type"] = None
+    if "context_enabled" not in st.session_state:
+        st.session_state["context_enabled"] = True
 
 def display_messages():
     for message in st.session_state.messages:
@@ -30,7 +32,6 @@ def process_file(file_uploader):
         st.session_state["assistant"].clear()
         st.session_state.messages = []
 
-        # Add document type selection
         document_type = st.selectbox(
             "Select document type",
             ["Contract", "Legal Brief", "Court Document", "Legislation", "Regulatory Filing", "Other"]
@@ -51,7 +52,6 @@ def process_file(file_uploader):
         st.session_state["show_file_uploader"] = False
         st.success(f"{document_type} processed successfully!")
         
-        # Add initial system message about the processed document
         system_msg = f"I have processed your {document_type.lower()}. I can help you understand its contents, identify key legal provisions, and explain complex legal terminology. Remember that I provide information, not legal advice. What would you like to know about the document?"
         st.session_state.messages.append({"role": "assistant", "content": system_msg})
         with st.chat_message("assistant"):
@@ -88,17 +88,29 @@ def reset_upload_state():
     st.session_state["file_uploaded"] = False
     st.session_state["pdf_processed"] = False
     st.session_state["document_type"] = None
+    # Clear conversation history when uploading new document
+    st.session_state["assistant"].clear()
+    st.session_state.messages = []
 
 def main():
     st.title("Legal Document Assistant")
     
-    # Add disclaimer at the top
     st.markdown("""
     > **Disclaimer:** This tool provides legal information for educational purposes only. 
     > It is not a substitute for professional legal advice. Please consult with a qualified attorney for specific legal guidance.
     """)
     
     init_session_state()
+    
+    # Add conversation context toggle
+    with st.sidebar:
+        st.header("Settings")
+        st.session_state["context_enabled"] = st.toggle(
+            "Enable conversation memory",
+            value=True,
+            help="When enabled, the assistant remembers previous questions and provides more contextual responses"
+        )
+    
     display_messages()
 
     if not st.session_state["show_file_uploader"]:
@@ -125,6 +137,9 @@ def main():
         submit_button = st.form_submit_button("Submit Question")
 
     if submit_button:
+        if not st.session_state["context_enabled"]:
+            # Clear memory but keep messages for display
+            st.session_state["assistant"].memory.clear()
         process_input(prompt, st.session_state["file_uploaded"])
 
 if __name__ == "__main__":
