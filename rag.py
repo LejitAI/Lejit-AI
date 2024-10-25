@@ -1,12 +1,10 @@
-# rag.py
-
 from chunk_vector_store import LegalChunkVectorStore
 from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
 from langchain_groq import ChatGroq
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.schema.output_parser import StrOutputParser
 from langchain.memory import ConversationBufferMemory
-from langchain.memory.chat_message_histories import StreamlitChatMessageHistory
+from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain.schema import HumanMessage, AIMessage
 from dotenv import load_dotenv
 import os
@@ -22,12 +20,6 @@ logger = logging.getLogger(__name__)
 
 class LegalRag:
     def __init__(self, memory_key: str = "chat_history") -> None:
-        """
-        Initialize the Legal RAG system with memory management and error handling.
-        
-        Args:
-            memory_key (str): Key used for storing chat history in memory
-        """
         self.cvs_obj = LegalChunkVectorStore()
         self.vector_store: Optional[Chroma] = None
         self.retriever = None
@@ -36,179 +28,23 @@ class LegalRag:
         self.persist_directory = "./chroma_db"
         self.memory_key = memory_key
         
-        # Initialize memory with StreamlitChatMessageHistory for persistence
+        # Initialize memory with Streamlit support
         self.memory = ConversationBufferMemory(
             memory_key=memory_key,
             return_messages=True,
             chat_memory=StreamlitChatMessageHistory()
         )
         
-        # Initialize ChromaDB client with error handling
         try:
             self.chroma_client = chromadb.PersistentClient(
                 path=self.persist_directory,
-                settings=Settings(
-                    anonymized_telemetry=False,
-                    is_persistent=True
-                )
+                settings=Settings(anonymized_telemetry=False, is_persistent=True)
             )
+            logger.info("Successfully initialized ChromaDB client")
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB client: {e}")
             raise
         
-        # System messages for different contexts
-        self.system_message = """You are an expert legal AI assistant trained in legal analysis, research, and documentation. Your purpose is to help understand and analyze legal documents while maintaining strict professional standards. You will:
-
-            1. Provide factual legal information while explicitly stating this is not legal advice
-            2. Analyze documents and identify key legal elements including:
-            - Binding provisions and obligations
-            - Definitions and interpretations
-            - Rights and responsibilities
-            - Timelines and deadlines
-            - Jurisdiction and governing law
-            - Risk factors and potential issues
-            3. Break down complex legal language into clear, understandable terms
-            4. Reference specific statutes, regulations, or case law when relevant
-            5. Identify potential compliance issues or areas requiring attorney review
-            6. Maintain proper legal terminology while explaining concepts
-            7. Consider jurisdictional differences when applicable
-            8. Review document structure and formatting for legal sufficiency
-
-            Critical Guidelines:
-            - Begin responses with: "Important: This analysis is for informational purposes only and does not constitute legal advice. Please consult with a qualified attorney for specific legal guidance."
-            - Maintain strict confidentiality and attorney-client privilege
-            - Cite specific sections/clauses when referencing documents
-            - Highlight ambiguities or potential conflicts in language
-            - Flag high-risk provisions or terms requiring special attention
-            - Indicate when additional legal research may be necessary
-            - Note jurisdictional limitations or requirements
-            - Reference industry standards and best practices when applicable
-            - Maintain professional tone and legal accuracy throughout
-
-            {mode_specific_context}
-            """
-        
-        # Enhanced mode-specific contexts for different types of analysis
-        self.mode_contexts = {
-            "text_only": """
-            Context Type: General Legal Information Analysis
-
-            Primary Focus:
-            - Explain fundamental legal concepts and principles
-            - Provide context for common legal terminology
-            - Discuss general legal frameworks and requirements
-            - Reference relevant statutes and regulations
-            - Explain standard legal procedures and processes
-            - Outline typical legal rights and obligations
-
-            Analysis Guidelines:
-            1. Start with broad legal principles before specific details
-            2. Reference authoritative legal sources when applicable
-            3. Explain legal terminology in plain language
-            4. Discuss common interpretations and applications
-            5. Highlight jurisdiction-specific considerations
-            6. Note relevant exceptions or special cases
-            7. Consider industry-standard practices
-            8. Reference historical legal precedents if relevant
-
-            Response Format:
-            1. Legal Framework: Outline applicable laws/regulations
-            2. Key Principles: Explain fundamental concepts
-            3. Practical Application: Discuss real-world context
-            4. Limitations: Note jurisdictional or scope restrictions
-            5. Additional Considerations: Flag related legal issues
-            """,
-            
-            "pdf_only": """
-            Context Type: Legal Document Analysis
-
-            Document Context:
-            {context}
-
-            Analysis Framework:
-            1. Document Structure
-               - Type and purpose of document
-               - Formatting and organization
-               - Completeness and coherence
-            
-            2. Key Provisions Analysis
-               - Definitions and interpretations
-               - Rights and obligations
-               - Conditions and warranties
-               - Term and termination
-               - Governing law and jurisdiction
-               - Remedies and enforcement
-            
-            3. Risk Assessment
-               - Ambiguous language
-               - Missing provisions
-               - Conflicting terms
-               - Compliance issues
-               - Enforceability concerns
-            
-            4. Contextual Elements
-               - Industry-specific considerations
-               - Regulatory requirements
-               - Market standard terms
-               - Jurisdictional impact
-            
-            Document Review Guidelines:
-            - Reference specific sections and clauses
-            - Compare against legal standards
-            - Identify unusual or non-standard provisions
-            - Flag potential drafting issues
-            - Note missing standard provisions
-            - Assess overall legal effectiveness
-            """,
-            
-            "combined": """
-            Context Type: Comprehensive Legal Analysis
-
-            Document Context:
-            {context}
-
-            Integrated Analysis Framework:
-            1. Document-Specific Analysis
-               - Detailed review of provided content
-               - Identification of key provisions
-               - Risk assessment and flagging
-               - Structural analysis
-            
-            2. Legal Framework Integration
-               - Applicable laws and regulations
-               - Relevant case law
-               - Industry standards
-               - Best practices
-            
-            3. Contextual Considerations
-               - Jurisdiction-specific requirements
-               - Industry-specific regulations
-               - Market standard comparisons
-               - Historical precedents
-            
-            4. Risk and Compliance
-               - Regulatory compliance assessment
-               - Enforceability analysis
-               - Risk mitigation strategies
-               - Best practice recommendations
-            
-            Response Structure:
-            1. Document Analysis: Specific content review
-            2. Legal Framework: Applicable laws and standards
-            3. Integrated Assessment: Combined analysis
-            4. Recommendations: Areas for review/improvement
-            5. Risk Factors: Identified concerns
-            
-            Special Instructions:
-            - Cross-reference document provisions with legal requirements
-            - Provide integrated analysis of specific and general principles
-            - Highlight interactions between document terms and legal framework
-            - Identify gaps between document content and legal requirements
-            - Suggest improvements based on legal standards
-            """
-        }
-        
-        # Initialize LLM
         try:
             load_dotenv()
             groq_api_key = os.getenv("GROQ_API_KEY")
@@ -216,32 +52,62 @@ class LegalRag:
             if not groq_api_key:
                 raise ValueError("GROQ_API_KEY not found in .env file")
             
-            self.model = ChatGroq(
-                api_key=groq_api_key,
-                model_name="llama3-70b-8192"
-            )
+            self.model = ChatGroq(api_key=groq_api_key, model_name="llama3-70b-8192", temperature=0.1)
+            logger.info("Successfully initialized LLM")
         except Exception as e:
             logger.error(f"Failed to initialize LLM: {e}")
             raise
         
-        # Initialize chains
+        # Initialize chat chains
         self._initialize_chains()
 
+    def _format_chat_history(self, chat_history) -> str:
+        formatted_history = []
+        for message in chat_history:
+            if isinstance(message, HumanMessage):
+                formatted_history.append(f"Human: {message.content}")
+            elif isinstance(message, AIMessage):
+                formatted_history.append(f"Assistant: {message.content}")
+        return "\n".join(formatted_history[-3:])
+
     def _initialize_chains(self) -> None:
-        """Initialize all chat chains with memory management"""
         try:
-            # Text-only chain
-            text_prompt = ChatPromptTemplate.from_messages([
-                ("system", self.system_message.format(
-                    mode_specific_context=self.mode_contexts["text_only"]
-                )),
-                MessagesPlaceholder(variable_name=self.memory_key),
-                ("human", "{question}")
-            ])
+            # Modified text prompt to incorporate document context
+            text_prompt = PromptTemplate.from_template(
+                """You are a knowledgeable legal assistant providing accurate information while maintaining that this is not legal advice.
+
+                Document Context:
+                {context}
+
+                Chat History:
+                {chat_history}
+
+                Human Question: {question}
+
+                Please provide a clear, professional response that:
+                1. Primarily uses information from the retrieved document context when available
+                2. References relevant legal concepts and principles
+                3. Clearly distinguishes between document-specific information and general legal knowledge
+                4. Maintains appropriate legal disclaimers
+                5. Suggests when professional legal counsel may be needed
+
+                Assistant Response:"""
+            )
             
+            def format_context(context_docs):
+                formatted_contexts = []
+                for i, doc in enumerate(context_docs, 1):
+                    metadata = doc.metadata or {}
+                    source_info = f"[Source: Page {metadata.get('page', 'N/A')}]"
+                    formatted_contexts.append(f"Context {i} {source_info}:\n{doc.page_content}")
+                
+                return "\n\n".join(formatted_contexts)
+            
+            # Modified text chain to include document retrieval
             self.text_chain = (
                 {
-                    self.memory_key: lambda x: self.memory.load_memory_variables({})[self.memory_key],
+                    "context": lambda x: format_context(self.retriever.get_relevant_documents(x["question"])) if self.retriever else "No document context available.",
+                    "chat_history": lambda x: self._format_chat_history(self.memory.chat_memory.messages),
                     "question": RunnablePassthrough()
                 }
                 | text_prompt 
@@ -249,31 +115,50 @@ class LegalRag:
                 | StrOutputParser()
             )
             
-            logger.info("Successfully initialized text chain")
+            logger.info("Successfully initialized text chain with RAG capabilities")
         except Exception as e:
             logger.error(f"Failed to initialize text chain: {e}")
             raise
-
     def _setup_document_chains(self) -> None:
-        """Setup PDF and combined chains with memory management"""
         if not self.retriever:
             logger.warning("Retriever not initialized. Skipping document chain setup.")
             return
         
         try:
-            # PDF-only chain
-            pdf_prompt = ChatPromptTemplate.from_messages([
-                ("system", self.system_message.format(
-                    mode_specific_context=self.mode_contexts["pdf_only"]
-                )),
-                MessagesPlaceholder(variable_name=self.memory_key),
-                ("human", "{question}")
-            ])
+            def format_context(context_docs):
+                formatted_contexts = []
+                for i, doc in enumerate(context_docs, 1):
+                    metadata = doc.metadata or {}
+                    source_info = f"[Source: Page {metadata.get('page', 'N/A')}]"
+                    formatted_contexts.append(f"Context {i} {source_info}:\n{doc.page_content}")
+                
+                return "\n\n".join(formatted_contexts)
+
+            pdf_prompt = PromptTemplate.from_template(
+                """You are a legal document analyst. You must ONLY provide information that is supported by the following document context. If the question cannot be answered solely from this context, say so explicitly.
+
+                Document Context:
+                {context}
+
+                Chat History:
+                {chat_history}
+
+                Human Question: {question}
+
+                Using ONLY the information from the document context above, provide a response that:
+                1. Directly quotes relevant sections when possible (use "..." for quotes)
+                2. Cites specific parts of the document using the provided source information
+                3. Stays strictly within the scope of the provided context
+                4. Clearly indicates if any part of the question cannot be answered from the context
+                5. Maintains appropriate legal disclaimers
+
+                Assistant Response:"""
+            )
             
             self.pdf_chain = (
                 {
-                    "context": self.retriever,
-                    self.memory_key: lambda x: self.memory.load_memory_variables({})[self.memory_key],
+                    "context": lambda x: format_context(self.retriever.get_relevant_documents(x["question"])),
+                    "chat_history": lambda x: self._format_chat_history(self.memory.chat_memory.messages),
                     "question": RunnablePassthrough()
                 }
                 | pdf_prompt 
@@ -281,19 +166,31 @@ class LegalRag:
                 | StrOutputParser()
             )
             
-            # Combined chain
-            combined_prompt = ChatPromptTemplate.from_messages([
-                ("system", self.system_message.format(
-                    mode_specific_context=self.mode_contexts["combined"]
-                )),
-                MessagesPlaceholder(variable_name=self.memory_key),
-                ("human", "{question}")
-            ])
+            combined_prompt = PromptTemplate.from_template(
+                """You are a legal assistant analyzing documents. Base your response primarily on the provided document context, only adding general legal knowledge when explicitly needed to explain context.
+
+                Document Context:
+                {context}
+
+                Chat History:
+                {chat_history}
+
+                Human Question: {question}
+
+                Provide a response that:
+                1. Primarily uses information from the document context
+                2. Clearly distinguishes between document-specific information and general legal knowledge
+                3. Quotes relevant document sections directly using "..."
+                4. Indicates when information comes from outside the document context
+                5. Maintains appropriate legal disclaimers
+
+                Assistant Response:"""
+            )
             
             self.combined_chain = (
                 {
-                    "context": self.retriever,
-                    self.memory_key: lambda x: self.memory.load_memory_variables({})[self.memory_key],
+                    "context": lambda x: format_context(self.retriever.get_relevant_documents(x["question"])),
+                    "chat_history": lambda x: self._format_chat_history(self.memory.chat_memory.messages),
                     "question": RunnablePassthrough()
                 }
                 | combined_prompt 
@@ -306,29 +203,254 @@ class LegalRag:
             logger.error(f"Failed to initialize document chains: {e}")
             raise
 
-    def _update_memory(self, query: str, response: str) -> None:
-        """
-        Update conversation memory with new interaction
+
+    def _initialize_chains(self) -> None:
+        try:
+            # Modified text prompt for Indian legal context
+            text_prompt = PromptTemplate.from_template(
+                """You are an experienced Indian legal assistant providing accurate information based on Indian law while maintaining that this is not legal advice. You must reference Indian legal statutes, acts, and precedents where applicable.
+
+                Document Context:
+                {context}
+
+                Chat History:
+                {chat_history}
+
+                Human Question: {question}
+
+                Please provide a clear, professional response that:
+                1. Primarily uses information from the retrieved document context when available
+                2. References relevant Indian legal concepts, statutes, and case laws
+                3. Clearly distinguishes between document-specific information and general Indian legal knowledge
+                4. Explains legal terms in simple language while retaining Indian legal terminology
+                5. Mentions relevant High Court or Supreme Court judgments if applicable
+                6. Maintains appropriate legal disclaimers as per Indian Bar Council guidelines
+                7. Suggests when consultation with an Indian advocate may be needed
+                8. Specifies if any information pertains to specific Indian states, as laws may vary by jurisdiction
+
+                Assistant Response:"""
+            )
+            
+            def format_context(context_docs):
+                formatted_contexts = []
+                for i, doc in enumerate(context_docs, 1):
+                    metadata = doc.metadata or {}
+                    source_info = f"[Source: Page {metadata.get('page', 'N/A')}]"
+                    formatted_contexts.append(f"Context {i} {source_info}:\n{doc.page_content}")
+                
+                return "\n\n".join(formatted_contexts)
+            
+            # Rest of the initialization code remains same
+            self.text_chain = (
+                {
+                    "context": lambda x: format_context(self.retriever.get_relevant_documents(x["question"])) if self.retriever else "No document context available.",
+                    "chat_history": lambda x: self._format_chat_history(self.memory.chat_memory.messages),
+                    "question": RunnablePassthrough()
+                }
+                | text_prompt 
+                | self.model
+                | StrOutputParser()
+            )
+            
+            logger.info("Successfully initialized Indian legal assistant text chain with RAG capabilities")
+        except Exception as e:
+            logger.error(f"Failed to initialize text chain: {e}")
+            raise
+
+    def _setup_document_chains(self) -> None:
+        if not self.retriever:
+            logger.warning("Retriever not initialized. Skipping document chain setup.")
+            return
+
+        try:
+            def format_context(context_docs):
+                formatted_contexts = []
+                for i, doc in enumerate(context_docs, 1):
+                    metadata = doc.metadata or {}
+                    source_info = f"[Source: Page {metadata.get('page', 'N/A')}]"
+                    formatted_contexts.append(f"Context {i} {source_info}:\n{doc.page_content}")
+                
+                return "\n\n".join(formatted_contexts)
+
+            # Modified PDF prompt for Indian legal context
+            pdf_prompt = PromptTemplate.from_template(
+            """You are an expert Indian legal document analyst specializing in court orders, contracts, compliance documents, government notifications, and statutory documents. Analyze the provided document context based on Indian legal framework.
+
+            Document Context:
+            {context}
+
+            Chat History:
+            {chat_history}
+
+            Human Question: {question}
+
+            Provide a detailed analysis following these guidelines:
+
+            1. Document Classification and Initial Analysis:
+               - Identify document type (Court Order/Contract/Compliance/Government/Case-related/Statutory)
+               - Specify jurisdiction (Supreme Court/High Court/State/Central)
+               - Identify parties involved and their roles
+               - Note critical dates, deadlines, and timelines
+
+            2. Detailed Content Analysis:
+               For Court Orders/Judgments:
+               - Extract key holdings and precedents
+               - Identify cited cases and statutes
+               - Highlight ratio decidendi
+               - Note important observations and directions
+
+               For Contracts/Agreements:
+               - Identify key clauses and obligations
+               - Highlight rights and liabilities
+               - Note important terms, conditions, and deadlines
+               - Flag potential legal issues
+
+               For Compliance Documents:
+               - List statutory requirements
+               - Identify compliance deadlines
+               - Note filing obligations
+               - Highlight regulatory requirements
+
+               For Government Documents:
+               - Explain implementation requirements
+               - Note procedural compliances
+               - Identify affected parties
+               - List required actions
+
+               For Case-Related Documents:
+               - Analyze procedural requirements
+               - Identify next steps
+               - Note response deadlines
+               - List required documentation
+
+               For Statutory Documents:
+               - Explain applicability
+               - List compliance requirements
+               - Note relevant authorities
+               - Highlight penalty provisions
+
+            3. Response Format:
+               - Quote relevant sections using "..."
+               - Cite specific document parts with source information
+               - Use clear headings for different aspects
+               - Provide practical implications
+               - Highlight immediate action items
+               - List relevant compliance requirements
+               - Include statutory references
+               - Note jurisdiction-specific requirements
+
+            4. Additional Guidelines:
+               - Stay strictly within document context
+               - Use appropriate Indian legal terminology
+               - Explain technical terms in simple language
+               - Maintain legal disclaimers as per Bar Council
+               - Indicate if any information is outside document scope
+               - Suggest professional consultation when needed
+               - Note if multiple interpretations are possible
+               - Highlight any ambiguities requiring clarification
+
+            Assistant Response (structure your response based on the document type and query focus):"""
+            )
+            
+            # Enhanced combined prompt for integrated analysis
+            combined_prompt = PromptTemplate.from_template(
+                """You are an expert Indian legal assistant providing comprehensive document analysis with additional legal context. 
+
+                Document Context:
+                {context}
+
+                Chat History:
+                {chat_history}
+
+                Human Question: {question}
+
+                Provide a detailed response that:
+
+                1. Document-Based Analysis:
+                - Analyze document content thoroughly
+                - Quote relevant sections using "..."
+                - Identify key provisions and requirements
+                - Note critical dates and deadlines
+                - Highlight important clauses and conditions
+
+                2. Legal Framework Integration:
+                - Connect document content with relevant:
+                    * Indian statutes and regulations
+                    * Supreme Court/High Court judgments
+                    * Government notifications/circulars
+                    * Regulatory requirements
+                - Explain legal implications
+                - Note jurisdiction-specific aspects
+                - Highlight compliance requirements
+
+                3. Practical Guidance:
+                - Provide actionable insights
+                - List required next steps
+                - Explain procedural requirements
+                - Note documentation needs
+                - Highlight compliance deadlines
+                - Suggest risk mitigation measures
+
+                4. Response Requirements:
+                - Distinguish between document information and general legal knowledge
+                - Use appropriate Indian legal terminology
+                - Explain complex terms simply
+                - Maintain professional disclaimers
+                - Indicate when professional help is needed
+                - Note any ambiguities or uncertainties
+                - Specify jurisdiction applicability
+
+                5. Based on Document Type:
+                Court Orders: Focus on holdings, precedents, directions
+                Contracts: Emphasize rights, obligations, terms
+                Compliance: Highlight requirements, deadlines, filings
+                Government: Explain implementation, procedures
+                Case Documents: Note procedures, timelines, requirements
+                Statutory: Detail applicability, compliance needs
+
+                Format your response based on document type and query focus, maintaining clarity and practical utility.
+
+                Assistant Response:"""
+            )
+            
+            # Chain setup
+            self.pdf_chain = (
+                {
+                    "context": lambda x: format_context(self.retriever.get_relevant_documents(x["question"])),
+                    "chat_history": lambda x: self._format_chat_history(self.memory.chat_memory.messages),
+                    "question": RunnablePassthrough()
+                }
+                | pdf_prompt 
+                | self.model
+                | StrOutputParser()
+            )
+            
+            self.combined_chain = (
+                {
+                    "context": lambda x: format_context(self.retriever.get_relevant_documents(x["question"])),
+                    "chat_history": lambda x: self._format_chat_history(self.memory.chat_memory.messages),
+                    "question": RunnablePassthrough()
+                }
+                | combined_prompt 
+                | self.model
+                | StrOutputParser()
+            )
+            
+            logger.info("Successfully initialized Indian legal document chains with enhanced analysis capabilities")
+        except Exception as e:
+            logger.error(f"Failed to initialize document chains: {e}")
+            raise
         
-        Args:
-            query (str): User's question
-            response (str): Assistant's response
-        """
+    def _update_memory(self, query: str, response: str) -> None:
         try:
             self.memory.chat_memory.add_message(HumanMessage(content=query))
             self.memory.chat_memory.add_message(AIMessage(content=response))
-            logger.debug(f"Memory updated with new interaction")
+            logger.debug("Memory updated with new interaction")
         except Exception as e:
             logger.error(f"Failed to update memory: {e}")
             raise
 
     def get_chat_history(self) -> List[Dict[str, Any]]:
-        """
-        Retrieve the chat history
-        
-        Returns:
-            List[Dict[str, Any]]: List of chat messages
-        """
         try:
             messages = self.memory.chat_memory.messages
             return [{"role": "human" if isinstance(msg, HumanMessage) else "assistant",
@@ -337,56 +459,35 @@ class LegalRag:
             logger.error(f"Failed to retrieve chat history: {e}")
             return []
 
-    def set_retriever(self) -> None:
-        """Set up the document retriever with similarity search"""
-        if self.vector_store:
-            try:
-                self.retriever = self.vector_store.as_retriever(
-                    search_type="similarity_score_threshold",
-                    search_kwargs={
-                        "k": 3,
-                        "score_threshold": 0.5,
-                    }
-                )
-                self._setup_document_chains()
-                logger.info("Successfully set up retriever")
-            except Exception as e:
-                logger.error(f"Failed to set up retriever: {e}")
-                raise
-
     def ask_text_only(self, query: str) -> str:
-        """
-        Handle text-only queries with memory management
-        
-        Args:
-            query (str): User's question
-            
-        Returns:
-            str: Assistant's response
-        """
         try:
-            response = self.text_chain.invoke(query)
+            # Check if documents are available in the vector store
+            if self.retriever:
+                # Get relevant documents
+                context_docs = self.retriever.get_relevant_documents(query)
+                logger.debug(f"Retrieved {len(context_docs)} contexts for text query: {[doc.page_content[:500] + '...' for doc in context_docs]}")
+            
+            # Process query with the text chain (which now includes document context if available)
+            response = self.text_chain.invoke({"question": query})
             self._update_memory(query, response)
             return response
+            
         except Exception as e:
             error_msg = f"Error processing text-only query: {str(e)}"
             logger.error(error_msg)
             return error_msg
 
     def ask_pdf(self, query: str) -> str:
-        """
-        Handle PDF-only queries with memory management
-        
-        Args:
-            query (str): User's question
-            
-        Returns:
-            str: Assistant's response
-        """
         if not self.pdf_chain:
             return "Please upload a legal document first."
         try:
-            response = self.pdf_chain.invoke(query)
+            context_docs = self.retriever.get_relevant_documents(query)
+            if not context_docs:
+                return "No relevant information found in the document. Please rephrase your question or ask about a different topic covered in the document."
+            
+            logger.debug(f"Retrieved contexts: {[doc.page_content[:500] + '...' for doc in context_docs]}")
+            
+            response = self.pdf_chain.invoke({"question": query})
             self._update_memory(query, response)
             return response
         except Exception as e:
@@ -397,7 +498,7 @@ class LegalRag:
     def ask_combined(self, query: str) -> str:
         """
         Handle combined queries with memory management
-        
+
         Args:
             query (str): User's question
             
@@ -407,13 +508,19 @@ class LegalRag:
         if not self.combined_chain:
             return self.ask_text_only(query)
         try:
-            response = self.combined_chain.invoke(query)
+            # Get relevant context to verify retrieval
+            context_docs = self.retriever.get_relevant_documents(query)  # Removed fetch_k
+            logger.debug(f"Retrieved contexts for combined query: {[doc.page_content[:500] + '...' for doc in context_docs]}")
+            
+            response = self.combined_chain.invoke({"question": query})
             self._update_memory(query, response)
             return response
         except Exception as e:
             error_msg = f"Error processing combined query: {str(e)}"
             logger.error(error_msg)
             return error_msg
+
+
 
     def feed(self, file_path: str, document_type: str = "Other") -> None:
         """
@@ -424,9 +531,10 @@ class LegalRag:
             document_type (str): Type of legal document
         """
         try:
-            # Create or get collection
+            # Recreate collection
             try:
                 self.chroma_client.delete_collection("document_collection")
+                logger.info("Deleted existing document collection")
             except ValueError:
                 pass
             
@@ -434,18 +542,28 @@ class LegalRag:
                 name="document_collection",
                 metadata={"hnsw:space": "cosine"}
             )
+            logger.info("Created new document collection")
             
             # Process document with document type
             chunks = self.cvs_obj.split_into_chunks(file_path, document_type)
+            logger.info(f"Split document into {len(chunks)} chunks")
+            
+            # Initialize vector store with proper embedding function
             self.vector_store = Chroma(
                 client=self.chroma_client,
                 collection_name="document_collection",
                 embedding_function=self.cvs_obj.embedding
             )
             
+            # Add documents and setup retriever
             self.vector_store.add_documents(chunks)
-            self.set_retriever()
+            self.retriever = self.vector_store.as_retriever(
+                search_type="similarity",
+                search_kwargs={"k": 3}
+            )
             
+            # Initialize document-aware chains
+            self._setup_document_chains()
             logger.info(f"Successfully processed {document_type} document")
             
         except Exception as e:
@@ -454,11 +572,12 @@ class LegalRag:
             raise Exception(error_msg)
 
     def clear(self) -> None:
-        """Clear all stored documents, reset chains, and clear memory"""
+        """Clear all stored documents and reset system state"""
         try:
             if self.chroma_client is not None:
                 try:
                     self.chroma_client.delete_collection("document_collection")
+                    logger.info("Deleted document collection")
                 except ValueError:
                     pass
             
@@ -473,4 +592,4 @@ class LegalRag:
         except Exception as e:
             error_msg = f"Error clearing resources: {str(e)}"
             logger.error(error_msg)
-            print(error_msg)
+            raise Exception(error_msg)

@@ -1,6 +1,6 @@
 # chunk_vector_store.py
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores.utils import filter_complex_metadata
+from langchain_community.vectorstores.utils import filter_complex_metadata
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.embeddings import FastEmbedEmbeddings
 import re
