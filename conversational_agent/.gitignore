@@ -1,0 +1,24 @@
+# Ignore environment variables
+.env
+
+# Ignore Chroma database directory
+chroma_db/
+
+# Ignore data directories
+Data_Devika/
+data_induja/
+
+# Ignore Python cache files
+__pycache__/
+
+# Optional: Ignore other common files (if relevant)
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+
+DATA ABHI.zip

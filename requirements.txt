@@ -1,7 +1,0 @@
-PyPDF2
-groq
-langchain
-langchain_community
-reportlab
-sentence_transformers
-chromadb
